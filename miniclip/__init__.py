@@ -7,6 +7,10 @@ from .synthetic_full import SyntheticImageTokens
 from .transformer import MultiHeadSelfAttention, TransformerBlock
 from .text_encoder import TextTransformer
 from .vit import VisionTransformer, PatchEmbed
+from .tokenizer import SimpleWordTokenizer
+from .dataset import Flickr8kDataset, collate_fn
+from .augment import make_train_transform, make_eval_transform
+from .retrieval import compute_retrieval_metrics
 
 __all__ = [
     "ProjectionHead",
@@ -20,4 +24,10 @@ __all__ = [
     "TextTransformer",
     "VisionTransformer",
     "PatchEmbed",
+    "SimpleWordTokenizer",
+    "Flickr8kDataset",
+    "collate_fn",
+    "make_train_transform",
+    "make_eval_transform",
+    "compute_retrieval_metrics",
 ]
