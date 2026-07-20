@@ -11,6 +11,7 @@ from .tokenizer import SimpleWordTokenizer
 from .dataset import Flickr8kDataset, collate_fn
 from .augment import make_train_transform, make_eval_transform
 from .retrieval import compute_retrieval_metrics
+from .amp import AMPContext
 
 __all__ = [
     "ProjectionHead",
@@ -30,4 +31,5 @@ __all__ = [
     "make_train_transform",
     "make_eval_transform",
     "compute_retrieval_metrics",
+    "AMPContext",
 ]

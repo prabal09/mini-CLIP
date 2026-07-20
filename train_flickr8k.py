@@ -35,6 +35,7 @@ from miniclip import (
     make_train_transform,
     make_eval_transform,
     compute_retrieval_metrics,
+    AMPContext,
 )
 
 
@@ -58,10 +59,14 @@ def main():
     VAL_SPLIT = 0.2
     MIN_WORD_FREQ = 3
     NUM_WORKERS = 2                   # set to 0 if you hit Windows DataLoader issues
+    USE_AMP = True                    # enabled only on CUDA; auto no-op on CPU
+    AMP_DTYPE = torch.float16         # set to torch.bfloat16 on Ampere+ if preferred
     SEED = 0
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
+    amp_ctx = AMPContext(enabled=USE_AMP, device=device, dtype=AMP_DTYPE)
+    print(f"AMP enabled: {amp_ctx.enabled} (dtype={AMP_DTYPE if amp_ctx.enabled else 'fp32'})")
 
     torch.manual_seed(SEED)
     random.seed(SEED)
@@ -151,18 +156,23 @@ def main():
             tokens = tokens.to(device, non_blocking=True)
             eos_pos = eos_pos.to(device, non_blocking=True)
 
-            img_feat = image_encoder(images)
-            text_feat = text_encoder(tokens, eos_pos)
-            z_img = proj_img(img_feat)
-            z_text = proj_text(text_feat)
+            # Encoders run inside autocast — heavy matmuls benefit from FP16
+            # tensor cores. Outputs are cast back to FP32 before projection
+            # so the L2-norm + similarity matrix + LSE stay in safe precision.
+            with amp_ctx.autocast():
+                img_feat = image_encoder(images)
+                text_feat = text_encoder(tokens, eos_pos)
+            z_img = proj_img(img_feat.float())
+            z_text = proj_text(text_feat.float())
             loss, m = symmetric_infonce_loss(z_img, z_text, temperature())
 
             optimizer.zero_grad()
-            loss.backward()
-            # Grad clipping keeps the contrastive loss from producing huge
-            # updates on hard batches (especially early when τ is still high).
+            amp_ctx.backward(loss)
+            # Unscale grads BEFORE clipping so the clip threshold is applied
+            # to true-magnitude gradients, not loss-scaled ones.
+            amp_ctx.unscale(optimizer)
             torch.nn.utils.clip_grad_norm_(params, max_norm=GRAD_CLIP)
-            optimizer.step()
+            amp_ctx.step(optimizer)
             scheduler.step()
             temperature.clamp_()
 
